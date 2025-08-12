@@ -66,9 +66,6 @@ multiomics/
 ├── trainer.py                   # Training system
 ├── main.py                      # Main interface
 ├── requirements.txt             # Dependencies
-├── plan                         # Project plan (Chinese)
-├── readme                       # Project description (Chinese)
-└── rule                         # Development rules (Chinese)
 ```
 
 ## Unique Encoder Architecture
