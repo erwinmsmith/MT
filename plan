@@ -1,0 +1,5 @@
+1、现在因为我的prior konwledge和dataset还没有准备好，所以需要你为我先将接口预留好，并为我模拟一下数据的输入，目前输入的dataset是由cell x gene、cell x peak、cell x protein组成
+2、需要构建一个有向的feature graph用于模拟（是和上面的模拟结合起来的，详细可以参考readme）
+3、请你保持我各个模块、组件、中间矩阵的暴露性，以便于我后期进行修改，例如encoder、decoder各种block的定义，我需要单独定义并封装调用，这样便于结构清晰
+4、需要写成工程文件的形式（也许需要data/dataset, data/prior_knowledge, main, dataloader, trainer, train, model/cellgraph, model/featuregraph, model/multimodel_fusion_block, model/encoder, model/decoder, model/directed_GNN, model/Heterogeneous_directed_GNN...），并用main.py --xxx 来控制各个部位（可能涉及到数据的选择、以及模块的启用与关闭以及超参数的配置）
+5、需要写一个config文件用于配置并读取模型的完整的超参数

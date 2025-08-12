@@ -1,0 +1,104 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import List, Optional
+
+class PeakEncoder(nn.Module):
+    """
+    Dedicated encoder for chromatin accessibility data (ATAC-seq).
+    Handles the specific characteristics of peak accessibility data.
+    """
+    
+    def __init__(self, input_dim: int, hidden_dims: List[int], 
+                 output_dim: int, dropout: float = 0.1, 
+                 activation: str = 'relu', batch_norm: bool = True,
+                 use_binary_transform: bool = True):
+        """
+        Initialize peak encoder.
+        
+        Args:
+            input_dim: Number of peaks
+            hidden_dims: List of hidden layer dimensions
+            output_dim: Output embedding dimension
+            dropout: Dropout rate
+            activation: Activation function ('relu', 'gelu', 'leaky_relu')
+            batch_norm: Whether to use batch normalization
+            use_binary_transform: Whether to apply sigmoid transformation for binary data
+        """
+        super(PeakEncoder, self).__init__()
+        
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.dropout_rate = dropout
+        self.use_binary_transform = use_binary_transform
+        
+        # Input normalization layer for peak accessibility
+        self.input_norm = nn.BatchNorm1d(input_dim) if batch_norm else nn.Identity()
+        
+        # Peak-specific preprocessing layer
+        self.peak_preprocessing = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.Sigmoid() if use_binary_transform else nn.Identity()
+        )
+        
+        # Build layers
+        layers = []
+        dims = [input_dim] + hidden_dims + [output_dim]
+        
+        for i in range(len(dims) - 1):
+            # Linear layer
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            
+            # Batch normalization (except for output layer)
+            if batch_norm and i < len(dims) - 2:
+                layers.append(nn.BatchNorm1d(dims[i + 1]))
+            
+            # Activation (except for output layer)
+            if i < len(dims) - 2:
+                if activation == 'relu':
+                    layers.append(nn.ReLU(inplace=True))
+                elif activation == 'gelu':
+                    layers.append(nn.GELU())
+                elif activation == 'leaky_relu':
+                    layers.append(nn.LeakyReLU(0.2, inplace=True))
+                else:
+                    raise ValueError(f"Unsupported activation: {activation}")
+                
+                # Dropout
+                if dropout > 0:
+                    layers.append(nn.Dropout(dropout))
+        
+        self.encoder = nn.Sequential(*layers)
+        
+        # Initialize weights
+        self._initialize_weights()
+    
+    def _initialize_weights(self):
+        """Initialize network weights."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.BatchNorm1d):
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+        
+        Args:
+            x: Peak accessibility tensor of shape (batch_size, n_peaks)
+            
+        Returns:
+            Encoded tensor of shape (batch_size, output_dim)
+        """
+        # Peak-specific preprocessing
+        x = self.peak_preprocessing(x)
+        
+        # Input normalization
+        x = self.input_norm(x)
+        
+        # Apply encoder
+        return self.encoder(x)

@@ -1,0 +1,158 @@
+# Multi-omics Topic Model Configuration
+
+# Data Configuration
+data:
+  n_cells: 2000
+  n_genes: 3000
+  n_peaks: 5000
+  n_proteins: 1000
+  embedding_dim: 256
+  n_topics: 20
+  batch_size: 64
+  data_dir: "data/dataset"
+  prior_knowledge_dir: "data/prior_knowledge"
+
+# Model Configuration
+model:
+  # Modality-specific encoders for cellgraph pathway
+  gene_encoder:
+    input_dim: 3000
+    hidden_dims: [1024, 512, 256]
+    output_dim: 256
+    dropout: 0.1
+    activation: "relu"
+    batch_norm: true
+    use_log_transform: true
+  
+  atac_encoder:
+    input_dim: 5000
+    hidden_dims: [1024, 512, 256]
+    output_dim: 256
+    dropout: 0.1
+    activation: "relu"
+    batch_norm: true
+    use_binary_transform: true
+  
+  protein_encoder:
+    input_dim: 1000
+    hidden_dims: [512, 256]
+    output_dim: 256
+    dropout: 0.1
+    activation: "relu"
+    batch_norm: true
+    use_log_transform: true
+    robust_scaling: true
+  
+  # Multimodal Fusion Block
+  fusion_block:
+    embed_dim: 256
+    n_heads: 8
+    n_layers: 3
+    dropout: 0.1
+    feedforward_dim: 512
+    activation: "gelu"
+  
+  # Cell Graph Components
+  cellgraph:
+    # Fused embedding encoder
+    fused_embedding_encoder:
+      input_dim: 256
+      hidden_dims: [256, 256]
+      output_dim: 256
+      dropout: 0.1
+      activation: "gelu"
+      use_residual: true
+      use_attention: true
+    
+    # Directed GNN for cell graph
+    directed_gnn:
+      hidden_dim: 256
+      n_layers: 3
+      dropout: 0.1
+      activation: "relu"
+      use_residual: true
+    
+    # Cell topics encoder (variational)
+    cell_topics_encoder:
+      input_dim: 256
+      hidden_dims: [256, 128]
+      n_topics: 20
+      dropout: 0.1
+      prior_mean: 0.0
+      prior_std: 1.0
+      use_batch_norm: true
+  
+  # Feature Graph Components
+  featuregraph:
+    # Heterogeneous directed GNN
+    heterogeneous_gnn:
+      hidden_dim: 256
+      output_dim: 256
+      n_layers: 3
+      n_heads: 4
+      dropout: 0.1
+      activation: "relu"
+      use_residual: true
+    
+    # Feature topics encoders (variational, per modality with specific features)
+    feature_encoders:
+      gene:
+        input_dim: 256
+        hidden_dims: [256, 128]
+        n_topics: 20
+        dropout: 0.1
+        prior_mean: 0.0
+        prior_std: 1.0
+        use_modality_specific_priors: true
+        gene_specific_features: true  # Enable gene-specific processing
+      peak:
+        input_dim: 256
+        hidden_dims: [256, 128]
+        n_topics: 20
+        dropout: 0.1
+        prior_mean: 0.0
+        prior_std: 1.0
+        use_modality_specific_priors: true
+        peak_specific_features: true  # Enable peak-specific processing
+      protein:
+        input_dim: 256
+        hidden_dims: [256, 128]
+        n_topics: 20
+        dropout: 0.1
+        prior_mean: 0.0
+        prior_std: 1.0
+        use_modality_specific_priors: true
+        protein_specific_features: true  # Enable protein-specific processing
+  
+  # Decoder Configuration
+  decoder:
+    topic_embedding_dim: 256
+    feature_embedding_dim: 256
+
+# Training Configuration
+training:
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  kl_weight: 1.0
+  reconstruction_weight: 1.0
+  warmup_epochs: 10
+  log_interval: 10
+  save_interval: 20
+  gradient_clip: 1.0
+
+# Trajectory Inference Configuration
+trajectory:
+  method: "diffusion"
+  n_components: 50
+  kernel_type: "gaussian"
+  sigma: 1.0
+  
+# Pathway Configuration
+enable_cellgraph: true
+enable_featuregraph: true
+
+# Device Configuration
+device: "cuda"
+seed: 42
+num_workers: 4
