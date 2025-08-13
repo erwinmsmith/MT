@@ -80,10 +80,18 @@ def parse_args():
     # Training arguments
     parser.add_argument('--epochs', type=int, default=100,
                         help='Number of training epochs')
+    parser.add_argument('--pretrain_epochs', type=int, default=5,
+                        help='Number of pretraining epochs for multimodal fusion')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='Learning rate')
     parser.add_argument('--kl_weight', type=float, default=1.0,
                         help='Weight for KL divergence loss')
+    
+    # Trajectory graph arguments
+    parser.add_argument('--chunk_size', type=int, default=400,
+                        help='Chunk size for graph computation (memory management)')
+    parser.add_argument('--overlap_ratio', type=float, default=0.2,
+                        help='Overlap ratio between chunks for smooth merging')
     
     # System arguments
     parser.add_argument('--device', type=str, default='cuda',

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
@@ -282,7 +283,115 @@ class MultiOmicsTrainer:
         print(f"\nTraining completed!")
         print(f"Best validation loss: {self.best_val_loss:.4f} at epoch {self.best_epoch}")
         
+        # Save computed graph structures after training
+        self._save_graph_structures_after_training()
+        
         return self.train_history
+    
+    def pretrain_multimodal_fusion(self, pretrain_epochs: int, data_matrices: dict):
+        """
+        Pretrain the multimodal fusion components to get stable cell embeddings.
+        This phase focuses on training encoders and fusion block without graph computation.
+        
+        Args:
+            pretrain_epochs: Number of epochs for pretraining
+            data_matrices: Full data matrices for computing stable embeddings
+        """
+
+        
+        # Set model to training mode
+        self.model.train()
+        
+        # Only train the cellgraph pathway encoders and fusion
+        if hasattr(self.model, 'cellgraph_pathway'):
+            cellgraph = self.model.cellgraph_pathway
+            
+            # Disable graph computation during pretraining
+            original_graph_computation = True
+            if hasattr(cellgraph, '_disable_graph_computation'):
+                original_graph_computation = cellgraph._disable_graph_computation
+            cellgraph._disable_graph_computation = True
+            
+            try:
+                for epoch in range(1, pretrain_epochs + 1):
+                    epoch_start_time = time.time()
+                    epoch_losses = {'total_loss': 0.0, 'reconstruction_loss': 0.0}
+                    num_batches = 0
+                    
+                    for batch_idx, batch_data in enumerate(self.data_loaders['train']):
+                        # Move batch to device - handle both dict and tuple formats
+                        if isinstance(batch_data, dict):
+                            batch = batch_data
+                        else:
+                            # If batch_data is a tuple/list, assume it's (data_dict, indices)
+                            batch = batch_data[0] if isinstance(batch_data, (tuple, list)) else batch_data
+                        
+                        # Ensure batch is moved to device
+                        for modality in batch:
+                            if hasattr(batch[modality], 'to'):
+                                batch[modality] = batch[modality].to(self.device)
+                        
+                        # Forward pass (simplified, no graph computation)
+                        self.optimizer.zero_grad()
+                        
+                        # Only compute up to fusion stage
+                        modality_embeddings = cellgraph.encode_modalities(batch)
+                        fused_embeddings = cellgraph.fuse_modalities(modality_embeddings)
+                        
+                        # Simple reconstruction loss to train encoders/fusion
+                        # Use a simplified reconstruction target
+                        reconstruction_losses = {}
+                        total_recon_loss = 0
+                        
+                        for modality, target in batch.items():
+                            # Skip non-modality keys
+                            if modality in ['cell_idx', 'cell_metadata']:
+                                continue
+                                
+                            # Simple linear projection for pretraining
+                            if not hasattr(cellgraph, f'_pretrain_proj_{modality}'):
+                                proj_layer = torch.nn.Linear(fused_embeddings.shape[-1], target.shape[-1]).to(self.device)
+                                setattr(cellgraph, f'_pretrain_proj_{modality}', proj_layer)
+                            
+                            proj_layer = getattr(cellgraph, f'_pretrain_proj_{modality}')
+                            reconstructed = proj_layer(fused_embeddings)
+                            recon_loss = F.mse_loss(reconstructed, target)
+                            reconstruction_losses[modality] = recon_loss
+                            total_recon_loss += recon_loss
+                        
+                        # Backward pass
+                        total_recon_loss.backward()
+                        
+                        # Gradient clipping
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip)
+                        
+                        # Update parameters
+                        self.optimizer.step()
+                        
+                        # Accumulate losses
+                        epoch_losses['total_loss'] += total_recon_loss.item()
+                        epoch_losses['reconstruction_loss'] += total_recon_loss.item()
+                        num_batches += 1
+                        
+                        if batch_idx % 20 == 0:  # Less frequent output
+                            print(f"     Epoch {epoch}/{pretrain_epochs}, Batch {batch_idx+1}, Loss: {total_recon_loss.item():.4f}")
+                    
+                    # Average losses
+                    for key in epoch_losses:
+                        epoch_losses[key] /= num_batches
+                    
+                    epoch_time = time.time() - epoch_start_time
+                    print(f"     Epoch {epoch}/{pretrain_epochs} completed: Loss={epoch_losses['total_loss']:.4f}, Time={epoch_time:.1f}s")
+                
+                # Clean up temporary projection layers
+                for modality in ['gene', 'peak', 'protein']:
+                    proj_attr = f'_pretrain_proj_{modality}'
+                    if hasattr(cellgraph, proj_attr):
+                        delattr(cellgraph, proj_attr)
+                
+            finally:
+                # Restore graph computation
+                cellgraph._disable_graph_computation = original_graph_computation
     
     def save_checkpoint(self, epoch: int, is_best: bool = False):
         """
@@ -315,6 +424,49 @@ class MultiOmicsTrainer:
         history_path = self.save_dir / 'training_history.json'
         with open(history_path, 'w') as f:
             json.dump(self.train_history, f, indent=2)
+    
+    def _save_graph_structures_after_training(self):
+        """
+        Verify that full graph structure is saved after training completion.
+        The graph should have been precomputed and saved before training started.
+        """
+        try:
+            # Check if cell graph pathway exists and is enabled
+            if not hasattr(self.model, 'cellgraph_pathway'):
+                print("No cellgraph pathway found in model - skipping graph structure verification")
+                return
+            
+            # Get the cell graph pathway from the model
+            cell_graph = self.model.cellgraph_pathway
+            
+            # Check if full graph structure exists
+            if cell_graph.is_graph_fixed():
+                print("Full graph structure is available in memory")
+                print(f"Graph shape: {cell_graph._fixed_adjacency_matrix.shape}")
+                print(f"Graph sparsity: {float((cell_graph._fixed_adjacency_matrix > 1e-6).float().mean()):.4f}")
+                
+                # Try to save it if not already saved
+                try:
+                    saved = cell_graph.graph_manager.save_graph_structure(
+                        cell_graph._fixed_adjacency_matrix,
+                        cell_graph._config_for_graph,
+                        additional_info={
+                            'source': 'training_verification',
+                            'n_cells': cell_graph._fixed_adjacency_matrix.shape[0],
+                            'creation_timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                    )
+                    if saved:
+                        pass
+                except Exception as e:
+                    print(f"Graph structure already exists or could not save: {e}")
+            else:
+                print("Warning: No full graph structure found after training")
+                print("This means trajectory inference used fallback batch-wise computation")
+                
+        except Exception as e:
+            print(f"Warning: Could not verify graph structures: {e}")
+            # Don't fail the training if graph verification fails
     
     def load_checkpoint(self, checkpoint_path: str):
         """

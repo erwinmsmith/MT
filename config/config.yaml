@@ -8,7 +8,7 @@ data:
   n_proteins: 1000
   embedding_dim: 256
   n_topics: 20
-  batch_size: 64
+  batch_size: 256
   data_dir: "data/dataset"
   prior_knowledge_dir: "data/prior_knowledge"
 
@@ -137,16 +137,25 @@ training:
   kl_weight: 1.0
   reconstruction_weight: 1.0
   warmup_epochs: 10
-  log_interval: 10
+  log_interval: 1  # Print every batch for small datasets
   save_interval: 20
   gradient_clip: 1.0
+  
+  # Multimodal fusion pretraining (before graph computation)
+  pretrain_epochs: 5  # Number of epochs to pretrain fusion before computing graph
 
 # Trajectory Inference Configuration
 trajectory:
-  method: "diffusion"
+  method: "pseudotime"  # Options: "diffusion", "pseudotime", "velocity"
   n_components: 50
-  kernel_type: "gaussian"
-  sigma: 1.0
+  kernel_type: "gaussian"  # Options: "gaussian", "cosine"
+  k_neighbors: 30  # Number of k-nearest neighbors for sparse graph
+  root_cell_idx: 0  # Index of root cell (only used for diffusion method)
+  # Note: root_cell_idx is only relevant for diffusion method
+  
+  # Graph computation parameters
+  chunk_size: 400  # Size of each chunk for graph computation (to manage memory)
+  overlap_ratio: 0.2  # Overlap ratio between chunks for smooth merging
   
 # Pathway Configuration
 enable_cellgraph: true

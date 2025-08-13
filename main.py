@@ -81,10 +81,18 @@ def load_data(config_loader: ConfigLoader):
     print("LOADING MULTI-OMICS DATA")
     print("=" * 60)
     
-    data_config = config_loader.get_data_config()
+    # Get full config so dataloader can access batch_size and other global settings
+    config = config_loader.get_config()
+    data_config = config.get('data', {})
+    
+    # Add global settings to data_config for dataloader
+    dataloader_config = data_config.copy()
+    dataloader_config['batch_size'] = data_config.get('batch_size', 64)  # batch_size is in data section
+    dataloader_config['num_workers'] = config.get('num_workers', 4)
+    dataloader_config['data_dir'] = data_config.get('data_dir', 'data/dataset')
     
     # Load dataset
-    data_loader = MultiOmicsDataLoader(data_config)
+    data_loader = MultiOmicsDataLoader(dataloader_config)
     
     try:
         data_matrices, cell_metadata, feature_metadata = data_loader.load_data()
@@ -198,6 +206,17 @@ def evaluate_model(config_loader: ConfigLoader, checkpoint_path: str,
     print(f"Loaded model from {checkpoint_path}")
     print(f"Best validation loss: {checkpoint['best_val_loss']:.4f}")
     
+    # Try to preload graph structure before evaluation
+    print("\nAttempting to preload graph structures...")
+    if hasattr(model, 'cellgraph_pathway'):
+        preload_success = model.cellgraph_pathway.preload_graph_structure()
+        if preload_success:
+            print("Graph structures successfully preloaded for evaluation")
+        else:
+            print("No graph structures found - will compute during evaluation")
+    else:
+        print("No cellgraph pathway found in model - will compute graphs during evaluation")
+    
     # Create data loaders
     data_loaders = data_loader.create_data_loaders(
         data_matrices, cell_metadata, feature_metadata
@@ -256,27 +275,88 @@ def main():
     # Load configuration
     config_loader = ConfigLoader(args.config)
     
-    # Update config with command line arguments
+    # Update config with command line arguments (only if explicitly provided)
+    import sys
     config_updates = {}
-    if args.data_dir:
-        config_updates['data'] = {'data_dir': args.data_dir}
-    if args.batch_size:
+    
+    # Helper function to check if argument was explicitly provided
+    def is_arg_provided(arg_name):
+        return f'--{arg_name}' in sys.argv
+    
+    # Data configuration updates
+    if is_arg_provided('data_dir'):
+        config_updates['data'] = config_updates.get('data', {})
+        config_updates['data']['data_dir'] = args.data_dir
+    
+    if is_arg_provided('prior_knowledge_dir'):
+        config_updates['data'] = config_updates.get('data', {})
+        config_updates['data']['prior_knowledge_dir'] = args.prior_knowledge_dir
+    
+    if is_arg_provided('batch_size'):
         config_updates['data'] = config_updates.get('data', {})
         config_updates['data']['batch_size'] = args.batch_size
-    if args.epochs:
-        config_updates['training'] = {'epochs': args.epochs}
-    if args.lr:
+    
+    if is_arg_provided('embedding_dim'):
+        config_updates['data'] = config_updates.get('data', {})
+        config_updates['data']['embedding_dim'] = args.embedding_dim
+    
+    if is_arg_provided('n_topics'):
+        config_updates['data'] = config_updates.get('data', {})
+        config_updates['data']['n_topics'] = args.n_topics
+    
+    # Training configuration updates
+    if is_arg_provided('epochs'):
+        config_updates['training'] = config_updates.get('training', {})
+        config_updates['training']['epochs'] = args.epochs
+    
+    if is_arg_provided('pretrain_epochs'):
+        config_updates['training'] = config_updates.get('training', {})
+        config_updates['training']['pretrain_epochs'] = args.pretrain_epochs
+    
+    if is_arg_provided('lr'):
         config_updates['training'] = config_updates.get('training', {})
         config_updates['training']['learning_rate'] = args.lr
+    
+    if is_arg_provided('kl_weight'):
+        config_updates['training'] = config_updates.get('training', {})
+        config_updates['training']['kl_weight'] = args.kl_weight
+    
+    # Trajectory configuration updates
+    if is_arg_provided('chunk_size'):
+        config_updates['trajectory'] = config_updates.get('trajectory', {})
+        config_updates['trajectory']['chunk_size'] = args.chunk_size
+    
+    if is_arg_provided('overlap_ratio'):
+        config_updates['trajectory'] = config_updates.get('trajectory', {})
+        config_updates['trajectory']['overlap_ratio'] = args.overlap_ratio
+    
+    # Global configuration updates
+    if is_arg_provided('num_workers'):
+        config_updates['num_workers'] = args.num_workers
+    
+    if is_arg_provided('seed'):
+        config_updates['seed'] = args.seed
+    
+    # Handle boolean flags (action='store_true') - only override if explicitly provided
+    if is_arg_provided('enable_cellgraph'):
+        config_updates['enable_cellgraph'] = args.enable_cellgraph
+    
+    if is_arg_provided('enable_featuregraph'):
+        config_updates['enable_featuregraph'] = args.enable_featuregraph
     
     if config_updates:
         config_loader.update_config(config_updates)
     
-    # Set random seed
-    set_seed(args.seed)
+    # Get final configuration after updates
+    final_config = config_loader.get_config()
     
-    # Setup device
-    if args.device == 'cuda' and torch.cuda.is_available():
+    # Set random seed (use config value unless overridden by command line)
+    seed = final_config.get('seed', 42)
+    set_seed(seed)
+    
+    # Setup device (use config value unless overridden by command line)
+    device_config = final_config.get('device', 'cuda') if not is_arg_provided('device') else args.device
+    if device_config == 'cuda' and torch.cuda.is_available():
         device = torch.device('cuda')
         print(f"Using GPU: {torch.cuda.get_device_name()}")
     else:
@@ -286,7 +366,7 @@ def main():
     print(f"Configuration loaded from: {args.config}")
     print(f"Mode: {args.mode}")
     print(f"Device: {device}")
-    print(f"Random seed: {args.seed}")
+    print(f"Random seed: {seed}")
     
     # Execute based on mode
     if args.mode == 'simulate':
@@ -298,6 +378,55 @@ def main():
         
         # Create model
         model = create_model(config_loader, prior_knowledge, device)
+        
+        # Stage 1: Pretrain multimodal fusion to get stable embeddings
+
+        
+        if hasattr(model, 'cellgraph_pathway'):
+            try:
+                pretrain_epochs = final_config.get('training', {}).get('pretrain_epochs', 5)
+
+                
+                # Create data loaders for pretraining
+                data_loaders = data_loader.create_data_loaders(
+                    data_matrices, cell_metadata, feature_metadata
+                )
+                
+                # Create a temporary trainer for pretraining
+                pretrain_trainer = MultiOmicsTrainer(model, final_config, data_loaders, device)
+                pretrain_trainer.pretrain_multimodal_fusion(pretrain_epochs, data_matrices)
+                
+
+                
+            except Exception as e:
+                print(f"Warning: Multimodal fusion pretraining failed: {e}")
+                print("Will proceed with graph computation using initial weights")
+        
+        # Stage 2: Compute and fix graph structure using pretrained embeddings
+
+        
+        if hasattr(model, 'cellgraph_pathway'):
+            try:
+
+                trajectory_config = final_config.get('trajectory', {})
+                chunk_size = trajectory_config.get('chunk_size', 400)
+                overlap_ratio = trajectory_config.get('overlap_ratio', 0.2)
+
+                
+                model.cellgraph_pathway.compute_full_graph_structure(
+                    data_matrices, cell_metadata, feature_metadata,
+                    chunk_size=chunk_size, overlap_ratio=overlap_ratio
+                )
+                print(" Graph structure computed and fixed")
+                
+            except Exception as e:
+                print(f"Warning: Could not compute graph structure: {e}")
+                print("Training will proceed with batch-wise graph computation")
+        
+        # Stage 3: Main training with fixed graph structure
+        # print("=" * 60)
+
+        # print("=" * 60)
         
         # Train model
         trainer, train_history = train_model(
