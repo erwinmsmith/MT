@@ -209,8 +209,8 @@ If you use this code in your research, please cite:
 ```bibtex
 @article{multiomics_topic_model,
   title={Multi-omics Topic Model with Dual Pathways for Single-cell Analysis},
-  author={[Your Name]},
-  journal={[Journal Name]},
-  year={[Year]}
+  author={[TBD]},
+  journal={[TBD]},
+  year={[TBD]}
 }
 ```
