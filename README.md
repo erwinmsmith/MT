@@ -66,9 +66,6 @@ multiomics/
 ├── trainer.py                   # Training system
 ├── main.py                      # Main interface
 ├── requirements.txt             # Dependencies
-├── plan                         # Project plan (Chinese)
-├── readme                       # Project description (Chinese)
-└── rule                         # Development rules (Chinese)
 ```
 
 ## Unique Encoder Architecture
@@ -204,19 +201,6 @@ The model provides comprehensive outputs:
 4. **Graph Structures**:
    - Cell-to-cell adjacency matrix
    - Heterogeneous feature graph with multiple edge types
-
-## Contributing
-
-This project follows modular design principles. When adding new components:
-
-1. Create separate encoder files for new modalities
-2. Maintain the exposed interface pattern for intermediate results
-3. Update configuration files for new hyperparameters
-4. Add comprehensive documentation
-
-## License
-
-[Specify your license here]
 
 ## Citation
 
