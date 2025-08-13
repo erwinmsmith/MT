@@ -30,44 +30,6 @@ This project implements a novel multi-omics topic model that integrates:
 2. **Constrained Decoding**: Uses both θ_d and B_d to reconstruct original data
 3. **VAE Framework**: KL divergence and reconstruction losses
 
-## Project Structure
-
-```
-multiomics/
-├── config/
-│   ├── __init__.py
-│   ├── config.yaml              # Main configuration file
-│   └── config_loader.py         # Configuration management
-├── data/
-│   ├── __init__.py
-│   ├── dataset_simulator.py     # Data simulation
-│   ├── dataloader.py           # Data loading utilities
-│   └── prior_knowledge.py      # Prior knowledge management
-├── model/
-│   ├── __init__.py
-│   ├── encoder/                 # Dedicated encoder folder
-│   │   ├── __init__.py
-│   │   ├── gene_encoder.py      # Gene expression encoder
-│   │   ├── peak_encoder.py      # Chromatin accessibility encoder  
-│   │   ├── protein_encoder.py   # Protein expression encoder
-│   │   ├── fused_embedding_encoder.py   # Fused embedding encoder
-│   │   ├── cell_topics_encoder.py       # Cell topic distribution encoder
-│   │   ├── base_feature_topics_encoder.py   # Base feature topics encoder
-│   │   ├── gene_feature_topics_encoder.py   # Gene-specific feature encoder
-│   │   ├── peak_feature_topics_encoder.py   # Peak-specific feature encoder
-│   │   └── protein_feature_topics_encoder.py # Protein-specific feature encoder
-│   ├── multimodel_fusion_block.py      # Multimodal fusion
-│   ├── directed_GNN.py          # Directed graph neural network
-│   ├── heterogeneous_directed_GNN.py   # Heterogeneous directed GNN
-│   ├── cellgraph.py             # CellGraph pathway
-│   ├── featuregraph.py          # FeatureGraph pathway
-│   ├── decoder.py               # Multi-omics decoder
-│   └── multiomics_topic_model.py       # Complete model
-├── trainer.py                   # Training system
-├── main.py                      # Main interface
-├── requirements.txt             # Dependencies
-```
-
 ## Unique Encoder Architecture
 
 ### Organized Encoder Structure
