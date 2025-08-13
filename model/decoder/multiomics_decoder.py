@@ -278,6 +278,14 @@ class MultiOmicsDecoder(nn.Module):
         """Get modality-specific topic embeddings."""
         return self.coordinate_topic_embeddings()
     
+    def get_embedding_to_feature_matrices(self) -> Dict[str, torch.Tensor]:
+        """Get embedding-to-feature matrices for each modality."""
+        return {
+            'gene': self.gene_decoder.embedding_to_feature,
+            'peak': self.peak_decoder.embedding_to_feature,
+            'protein': self.protein_decoder.embedding_to_feature
+        }
+    
     def get_intermediate_results(self) -> Dict[str, any]:
         """Get intermediate results for analysis."""
         return self.intermediate_results.copy()

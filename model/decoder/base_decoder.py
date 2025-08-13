@@ -35,6 +35,11 @@ class BaseDecoder(nn.Module, ABC):
             topic_embedding_dim, feature_embedding_dim
         )
         
+        # Additional transformation layer
+        self.topic_to_feature_transform = nn.Linear(
+            n_topics, n_features
+        )
+        
         # Embedding-to-feature matrix
         self.embedding_to_feature = nn.Parameter(
             torch.randn(feature_embedding_dim, n_features)

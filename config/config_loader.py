@@ -99,5 +99,7 @@ def parse_args():
                         help='Running mode')
     parser.add_argument('--config', type=str, default='config/config.yaml',
                         help='Path to configuration file')
+    parser.add_argument('--checkpoint', type=str, default=None,
+                        help='Path to model checkpoint for evaluation/inference')
     
     return parser.parse_args()
